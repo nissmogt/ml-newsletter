@@ -1,2 +1,2 @@
 # ml-newsletter
-latest machine learning research
+The latest machine learning research papers from arxiv. Updated every Friday.
