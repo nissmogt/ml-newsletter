@@ -11,7 +11,7 @@ from openai import OpenAI
 OpenAI.openai_api_key = os.getenv("OPENAI_API_KEY")
 client = OpenAI()
 
-def fetch_latest_ml_papers(max_results=10, days_ago=5, download=False, paperspath='', extension='tar.gz', subject_query='machine learning'):
+def fetch_latest_ml_papers(max_results=10, download=False, paperspath='', extension='tar.gz', subject_query='machine learning'):
     client = arxiv.Client()
     search = arxiv.Search(
         query=subject_query,
@@ -21,7 +21,7 @@ def fetch_latest_ml_papers(max_results=10, days_ago=5, download=False, paperspat
     )
     paper_info = []
     list_of_files = []
-    print(f"Fetching papers from {days_ago} days ago...")
+    # print(f"Fetching papers from {days_ago} days ago...")
     for result in client.results(search):
         # only append if the paper was published more than 5 days ago
         # TODO: Add date range filter
@@ -70,7 +70,7 @@ def extract_tarfile(tar_file, extract_path):
 def find_main_tex_file(extract_path):
     for root, dirs, files in os.walk(extract_path):
         for file in files:
-            if file in ["arxiv.tex", "main.tex"]:
+            if file in ["arxiv.tex", "main.tex", "neurips_2024.tex"]:
                 return os.path.join(root, file)
     return None
 
@@ -172,7 +172,7 @@ def generate_section_prompt(section_name):
     # TODO: add Logging to this function
     base_prompt = f"You are a helpful assistant. Create a detailed prompt to concisely summarize the '{section_name}' section of a scientific article. In the prompt, stress that the summary must be detailed enough to cover all key points but concise enough to provide a clear understanding in markdown bullet point format."
     response = client.chat.completions.create(
-                model="gpt-3.5-turbo-0125",
+                model="gpt-4o-mini",
                 messages=[
                     {"role": "system", "content": base_prompt},
                     {"role": "user", "content": f"Generate a prompt for the '{section_name}' section."}
@@ -192,7 +192,7 @@ def generate_formatted_summary(summary):
         "**Significance:** "
     )
     response = client.chat.completions.create(
-        model="gpt-3.5-turbo-0125",
+        model="gpt-4o-mini",
         messages=[
             {"role": "system", "content": prompt},
             {"role": "user", "content": summary}

@@ -20,7 +20,7 @@ if not os.path.exists(newsletter_dir):
 
 
 # Fetch the latest ML papers and download them
-paper_info_list, paper_source_folder_list = fetch_latest_ml_papers(max_results=10, days_ago=5, download=True, 
+paper_info_list, paper_source_folder_list = fetch_latest_ml_papers(max_results=5, download=True, 
                                                                    paperspath=paperspath, extension='tar.gz', 
                                                                    subject_query='machine learning')
 
@@ -41,7 +41,7 @@ for idx, paper in enumerate(paper_info_list):
     main_text = find_main_tex_file(extract_path)
     # if main_text is None then skip to next paper
     if main_text is None:
-        print(f"Main tex file not found for {paper['title']}\nmoving on to next paper...")
+        print(f"**WARNING: Main tex file not found for {paper['title']}\nmoving on to next paper...")
         continue
     print(f"Main text file: {main_text}")
     tex_soup = parse_tex_file(main_text)
@@ -56,7 +56,7 @@ for idx, paper in enumerate(paper_info_list):
     
     # if section_dict is empty then skip to next paper
     if not section_dict:
-        print(f"No sections found for {paper['title']}\nmoving on to next paper...")
+        print(f"**WARNING: No sections found for {paper['title']}\nmoving on to next paper...")
         continue
     print(section_dict.keys())
     
@@ -69,14 +69,14 @@ for idx, paper in enumerate(paper_info_list):
             # print(f"PROMPT -> {prompt}")
             
             response = client.chat.completions.create(
-                model="gpt-3.5-turbo-0125",
+                model="gpt-4o-mini",
                 messages=[
                     {"role": "system", "content": prompt},
                     {"role": "user", "content": text}
                 ]
             )
             summary = response.choices[0].message.content
-            #print(f"SUMMARY -> {summary}")
+            print(f"SUMMARY -> {summary}")
             summaries[section_name] = summary
     concat_summary = "\n".join(f"- {summary}" for summary in summaries.values())
     formatted_summary = generate_formatted_summary(concat_summary)
