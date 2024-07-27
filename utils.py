@@ -52,11 +52,15 @@ def extract_tarfile(tar_file, extract_path):
         return False
 
 def find_main_tex_file(extract_path, test=False):
+    '''Find the main .tex file in the extracted directory
+    '''
     for root, _, files in os.walk(extract_path):
-        print(f'Root: {root}\nFiles: {files}')
-        if test:
-            return next((Path(root) / file for file in files if file in ["test1.tex", "test2.tex"]), None)
-        return next((Path(root) / file for file in files if file in ["arxiv.tex", "main.tex", "neurips_2024.tex"]), None)
+        for file in files:
+            if file.endswith('.tex'):
+                with open(Path(root) / file, 'r') as f:
+                    tex_content = f.read()
+                if '\\begin{document}' in tex_content:
+                    return Path(root) / file
     return None
 
 @lru_cache(maxsize=32)
@@ -95,24 +99,103 @@ def generate_section_prompt(section_name):
     )
     return response.choices[0].message.content.strip()
 
-def generate_formatted_summary(summary):
+def section_summary_generator(section_dict):
+    summaries = {}
+    # Loop through each section and generate a summary
+    for section_name, section_contents in section_dict.items():
+        if 'math_definition' not in section_name and 'acknowledgements' not in section_name:
+            print(section_name)
+            text = str(section_contents)
+            prompt = generate_section_prompt(section_name)
+            print(f"PROMPT -> {prompt}")
+            
+            try:
+                response = client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[
+                        {"role": "system", "content": prompt},
+                        {"role": "user", "content": text}
+                    ]
+                )
+                # Checks to see if the response has any choices
+                if response.choices:
+                    summary = response.choices[0].message.content
+                    print(f"SUMMARY -> {summary}")
+                    summaries[section_name] = summary
+                else:
+                    print(f"**WARNING: No choices returned for section {section_name}")
+            except Exception as e:
+                print(f"**ERROR: {e}")
+
+    return summaries 
+
+
+def article_summary_generator(summary):
     prompt = (
-        "Summarize the key points of a scientific article for a technical audience with these headings:\n\n"
-        "**Objective:** \n**Method:** \n**Results:** \n**Significance:** "
+        "Summarize the key points of a scientific article for a technical audience using the following format. "
+        "Ensure you include exactly these headings and nothing else:\n\n"
+        "## Objective:\nProvide a concise statement of the study's goal or main question.\n\n"
+        "## Method:\nDescribe the main methods or procedures used in the study. Be explicit on the tools used.\n\n"
+        "## Results:\nSummarize the key findings of the study.\n\n"
+        "## Significance:\nExplain the importance and implications of the findings.\n\n"
+        "Here is the summary to format:\n\n"
     )
     response = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
-            {"role": "system", "content": prompt},
-            {"role": "user", "content": summary}
-        ]
+            {"role": "system", "content": "You are a helpful assistant that formats scientific article summaries."},
+            {"role": "user", "content": prompt + summary}
+        ],
+        temperature=0.5,
+        max_tokens=300
     )
-    formatted_summary = response.choices[0].message.content.strip()
-    return {section.lower(): content.strip() for section, content in 
-            (part.split(':', 1) for part in formatted_summary.split('**')[1:] if ':' in part)}
+    summary = response.choices[0].message.content.strip()
+    return summary
+
+def save_raw_summary(content, file):
+    with open(file, 'w', encoding='utf-8') as f:
+        f.write(content)
+
+def format_to_markdown(text):
+    """Convert text to markdown format"""
+    # Split text into sections
+    text = text.strip()
+    sections = text.split('##')
+    sections = sections[1:]  # remove first empty element
+    
+    markdown_output = ""
+    for section in sections:
+        # Split the section into title and content based on Objective, Method, Results, Significance
+        if 'Objective' in section:
+            title = 'Objective'
+            content = section.split('Objective:', 1)
+        elif 'Method' in section:
+            title = 'Method'
+            content = section.split('Method:', 1)
+        elif 'Results' in section:
+            title = 'Results'
+            content = section.split('Results:', 1)
+        elif 'Significance' in section:
+            title = 'Significance'
+            content = section.split('Significance:', 1)
+        else:
+            print(f"**WARNING: Section not recognized: {section}")
+            continue
+        # Add title as h3 header
+        markdown_output += f"### {title}\n\n"
+        # Add the content and strip whitespace
+        markdown_output += f"{content[1].strip()}\n\n"
+    return markdown_output.strip()
 
 def template_newsletter(summary, paper):
-    return f"**{paper['title']}**\n\n{summary}\n\narxiv: {paper['arxiv_url']}\n\n---\n\n"
+    return f"## {paper['title']}\n\n{summary}\n\narxiv: {paper['arxiv_url']}\n\n---\n\n"
+
+# save to markdown
+def save_newsletter(content, file):
+    # content is a list with each element being a string
+    with open(file, 'w+', encoding='utf-8') as f:
+        for line in content:
+            f.write(line)
 
 def save_to_json(content, file_path):
     with open(file_path, 'w', encoding='utf-8') as f:

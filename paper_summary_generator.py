@@ -5,12 +5,14 @@ from pathlib import Path
 from utils import (
     initialize_directories, fetch_latest_ml_papers, extract_tarfile, find_main_tex_file, parse_tex_file,
     find_tex_command, create_sections_from_main_tex, create_section_dict,
-    generate_section_prompt, generate_formatted_summary, save_to_json
+    section_summary_generator, article_summary_generator, template_newsletter, save_raw_summary,
+    format_to_markdown, save_newsletter 
 )
 
 BASE_DIR = Path(__file__).resolve().parent
 PAPERS_DIR = BASE_DIR / 'papers'
 NEWSLETTER_DIR = BASE_DIR / 'newsletter'
+SUMMARY_DIR = BASE_DIR / 'summary_cache'
 TEST_DIR = BASE_DIR / 'test'
 
 def generate_newsletter_content(paper_info_list, paper_source_folder_list, papers_path, test=False):
@@ -20,15 +22,12 @@ def generate_newsletter_content(paper_info_list, paper_source_folder_list, paper
     print(f"*** Paper Info List: {paper_info_list}")
     print(f"*** Mode: {['Test' if test else 'Production']}")
 
-    newsletter_content = {
-        "newsletter_title": "Weekly Machine Learning Research Highlights\n\n",
-        "papers": []
-    }
+    newsletter_content = ["# Weekly Machine Learning Research Highlights\n\n"]
     
     for idx, paper in enumerate(paper_info_list):
         tar_file = papers_path / paper_source_folder_list[idx]
         extract_path = papers_path / paper_source_folder_list[idx].replace('.tar.gz', '')
-        print(f"**Extract Path: {extract_path}")
+        print(f"\n\n**Extract Path: {extract_path}")
         
         if not extract_path.exists():
             extract_tarfile(tar_file, extract_path)
@@ -55,47 +54,21 @@ def generate_newsletter_content(paper_info_list, paper_source_folder_list, paper
             continue
         print(section_dict.keys())
         
-        summaries = {}  # Dictionary to store summaries for each section
-        # Loop through each section and generate a summary
-        for section_name, section_contents in section_dict.items():
-            if 'math_definition' not in section_name and 'acknowledgements' not in section_name:
-                print(section_name)
-                text = str(section_contents)
-                prompt = generate_section_prompt(section_name)
-                print(f"PROMPT -> {prompt}")
-                
-                try:
-                    response = client.chat.completions.create(
-                        model="gpt-4o-mini",
-                        messages=[
-                            {"role": "system", "content": prompt},
-                            {"role": "user", "content": text}
-                        ]
-                    )
-                    # Checks to see if the response has any choices
-                    if response.choices:
-                        summary = response.choices[0].message.content
-                        print(f"SUMMARY -> {summary}")
-                        summaries[section_name] = summary
-                    else:
-                        print(f"**WARNING: No choices returned for section {section_name}")
-                except Exception as e:
-                    print(f"**ERROR: {e}")
+        summaries = section_summary_generator(section_dict)
 
         # Join all the summaries into a single string, put into json format, and add to newsletter content
-        concat_summary = "\n".join(f"- {summary}" for summary in summaries.values())
-        formatted_summary = generate_formatted_summary(concat_summary)
-        paper_summary = {
-            "title": paper['title'],
-            "objective": formatted_summary.get("objective", ""),
-            "method": formatted_summary.get("method", ""),
-            "results": formatted_summary.get("results", ""),
-            "significance": formatted_summary.get("significance", ""),
-            "arxiv": paper['arxiv_url']
-        }
-        newsletter_content["papers"].append(paper_summary)
+        concat_summary = "\n".join(f"{summary}" for summary in summaries.values())
+        summary = article_summary_generator(concat_summary)
+        formatted_summary = format_to_markdown(summary)
+        # Cache the raw summary
+        cdate = time.strftime("%Y-%m-%d")
+        SUMMARY_DIR.mkdir(parents=True, exist_ok=True)
+        save_raw_summary(formatted_summary, SUMMARY_DIR / f"{cdate}_{paper['title']}.md")
+        news_template = template_newsletter(formatted_summary, paper)
+        save_newsletter(news_template, SUMMARY_DIR / f"{cdate}.md")
 
-    print(f"*** Final Newsletter Papers: {len(newsletter_content['papers'])}")
+        newsletter_content += news_template
+    print(f"*** Final Newsletter Papers: {len(newsletter_content)}")
     return newsletter_content
 
 def main(test=False):
@@ -105,8 +78,9 @@ def main(test=False):
 
     if not test:
         # Fetch latest machine learning papers
+        n_papers = 5
         paper_info_list, paper_source_folder_list = fetch_latest_ml_papers(
-            max_results=5, download=True, 
+            max_results=n_papers, download=True, 
             paperspath=papers_dir, extension='tar.gz', 
             subject_query='machine learning'
         )
@@ -122,10 +96,10 @@ def main(test=False):
 
     current_year = datetime.now().year
     current_date = time.strftime("%Y-%m-%d")
-    json_output_folder = NEWSLETTER_DIR / str(current_year)
-    json_output_folder.mkdir(parents=True, exist_ok=True)
-    json_file_path = json_output_folder / f"n_{current_date}.json"
-    save_to_json(newsletter_content, json_file_path)
+    output_folder = NEWSLETTER_DIR / str(current_year)
+    output_folder.mkdir(parents=True, exist_ok=True)
+    file_path = output_folder / f"n_{current_date}.md"
+    save_newsletter(newsletter_content, file_path)
 
 if __name__ == "__main__":
-    main(test=True)  # Set to True for testing
+    main(test=False)  # Set to True for testing
