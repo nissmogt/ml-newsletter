@@ -2,14 +2,19 @@ import os
 import json
 import arxiv
 import tarfile
-import datetime
+import re
+import logging
+from pathlib import Path
+from functools import lru_cache
 from pylatexenc.latex2text import LatexNodes2Text
 import TexSoup as texsoup
 from openai import OpenAI
 
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-OpenAI.openai_api_key = os.getenv("OPENAI_API_KEY")
-client = OpenAI()
+def initialize_directories(*dirs):
+    for dir_path in dirs:
+        Path(dir_path).mkdir(parents=True, exist_ok=True)
 
 def fetch_latest_ml_papers(max_results=10, download=False, paperspath='', extension='tar.gz', subject_query='machine learning'):
     client = arxiv.Client()
@@ -17,20 +22,11 @@ def fetch_latest_ml_papers(max_results=10, download=False, paperspath='', extens
         query=subject_query,
         max_results=max_results,
         sort_by=arxiv.SortCriterion.LastUpdatedDate
-
     )
     paper_info = []
     list_of_files = []
-    # print(f"Fetching papers from {days_ago} days ago...")
+    
     for result in client.results(search):
-        # only append if the paper was published more than 5 days ago
-        # TODO: Add date range filter
-        # print(f"Current date: {datetime.datetime.now().date()}")
-        # print(f"Published date: {result.published.date()}")
-        # delta_days = (datetime.datetime.now().date() - result.published.date()).days
-        # print(delta_days)
-        # if delta_days < days_ago:
-            # continue
         print(f"MESSAGE -> Title: {result.title}")
         paper_info.append({
             "title": result.title,
@@ -40,191 +36,198 @@ def fetch_latest_ml_papers(max_results=10, download=False, paperspath='', extens
             "pdf_url": result.pdf_url,
             "arxiv_url": result.entry_id
         })
-        fileout = f'{((result.title).replace(":", "")).replace(" ", "_")}.{extension}'
+        fileout = f'{result.title.replace(":", "").replace(" ", "_")}.{extension}'
         print(f"MESSAGE -> Output File: {fileout}")
         list_of_files.append(fileout)
         if download:
-            # result.download_pdf(dirpath=paperspath, filename=fileout)
             result.download_source(dirpath=paperspath, filename=fileout)
     return paper_info, list_of_files
-
-
-def make_paper_dict(pdf_list, paperspath=''):
-    paper_dict = {}
-    for paper in pdf_list:
-        paper_name = paper.split('_')[0].replace('-', '_').lower()
-        paper = os.path.join(paperspath, paper)
-        paper_dict[paper_name] = paper
-    return paper_dict
-
 
 def extract_tarfile(tar_file, extract_path):
     try:
         with tarfile.open(tar_file, 'r:gz') as tar:
             tar.extractall(path=extract_path)
+        return True
     except tarfile.ReadError:
         print(f"Skipping {tar_file} as it is not a valid gzip file.")
         return False
-    return True
 
-def find_main_tex_file(extract_path):
-    for root, dirs, files in os.walk(extract_path):
+def find_main_tex_file(extract_path, test=False):
+    '''Find the main .tex file in the extracted directory
+    '''
+    for root, _, files in os.walk(extract_path):
         for file in files:
-            if file in ["arxiv.tex", "main.tex", "neurips_2024.tex"]:
-                return os.path.join(root, file)
+            if file.endswith('.tex'):
+                with open(Path(root) / file, 'r') as f:
+                    tex_content = f.read()
+                if '\\begin{document}' in tex_content:
+                    return Path(root) / file
     return None
 
-
+@lru_cache(maxsize=32)
+# def parse_tex_file(file_path):
+#     with open(file_path, 'r') as file:
+#         tex_content = file.read()
+#     return texsoup.TexSoup(tex_content)
 def parse_tex_file(file_path):
-    with open(file_path, 'r') as file:
-        tex_content = file.read()
-    return texsoup.TexSoup(tex_content)
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            tex_content = f.read()
+        
+        # preprocess the tex content
+        # tex_content = preprocess_tex(tex_content)
+
+        return texsoup.TexSoup(tex_content)
+    except Exception as e:
+        logging.error(f"Error parsing tex file: {file_path}: {str(e)}")
+        return None
+
+
+def preprocess_tex(tex_content):
+    # Remove comments
+    content = re.sub(r'%.*$', '', tex_content, flags=re.MULTILINE)
+    # Simplify complex math environments
+    content = re.sub(r'\\begin{equation}.*?\\end{equation}', '\\begin{equation}...\\end{equation}', content, flags=re.DOTALL)
+    content = re.sub(r'\\begin{align}.*?\\end{align}', '\\begin{align}...\\end{align}', content, flags=re.DOTALL)
+    
+    # Remove bibliography-related commands
+    content = re.sub(r'\\bibliography{.*?}', '', content)
+    content = re.sub(r'\\bibliographystyle{.*?}', '', content)
+    
+    # Simplify figure environments
+    content = re.sub(r'\\begin{figure}.*?\\end{figure}', '\\begin{figure}...\\end{figure}', content, flags=re.DOTALL)
+    return content
+
 
 
 def find_tex_command(tex_soup, field):
-    """ Wrapper for find_all TexSoup function. 
-    """
     tex_list = tex_soup.find_all(field)
-    if len(tex_list) > 0:
-        return tex_list
-    else:
+    if not tex_list:
         print(f'* Warning: "{field}" returned empty list!')
-        return tex_list
-    
+    return tex_list
 
 def create_sections_from_main_tex(inputs_list, file_path):
-    """ Creates a list of sections from the main TeX file.
-    """
-    section_inputs = [inputs.contents[0] for inputs in inputs_list]     # creates a list of the input sections
+    section_inputs = [inputs.contents[0] for inputs in inputs_list]
     print(f'Filepath: {file_path}\n\nContents: {section_inputs}')
-    section_paths = [os.path.join(file_path, y.replace(".tex", "") + ".tex") for y in section_inputs]
-    return section_paths
+    return [Path(file_path) / f"{y.replace('.tex', '')}.tex" for y in section_inputs]
 
 def create_section_dict(section_filepaths):
-    """ Creates a Dictionary of Sections and their contents, based on a list of section file paths.
-        Inputs:
-                section_filepaths: List
-        Outputs:
-                sections_dic: Dictionary with 
-                              key -> section name: Str
-                              value -> section content: TexSoup Node
-    """
     if not section_filepaths:
         print('** ERROR: section_filepaths is empty!')
         return None
     
-    # TODO: Find out bottleneck
-    sections_dic = {}
-    for sec_file in section_filepaths:
-        sec_name = os.path.splitext(os.path.basename(sec_file))[0]
-        sections_dic[sec_name] = parse_tex_file(sec_file)
-    return sections_dic
+    return {path.stem: parse_tex_file(str(path)) for path in section_filepaths}
 
-
-# def create_figure_dict(sections_dictionary, section='method'):
-#     """Creates a dictionary of figures and their contents based on the sections dictionary for a specific section."""
-#     if section not in sections_dictionary:
-#         return None
-
-#     sec = sections_dictionary[section]
-#     fig_raw_list = find_tex_command(sec, 'includegraphics')
-#     fig_content_list = find_tex_command(sec, 'figure')
-    
-#     if not fig_raw_list:
-#         print(f'* Warning: {section} has no figures!')
-#         return {}
-    
-#     figures_dic = {}
-#     for fig_raw, fig_content in zip(fig_raw_list, fig_content_list):
-#         fig_path = fig_raw[2]
-#         fig_caption = fig_content.caption
-#         fig_name = os.path.splitext(os.path.basename(fig_path))[0]
-#         figures_dic[fig_name] = fig_caption
-
-#     return figures_dic
-    
-# def compile_paper_figures(sec_dic):
-#     """ Compiles all figures from every section into a dictionary.
-#     """
-#     paper_dict = {}
-#     for sec_name, sec_content in sec_dic.items():
-#         print(sec_name)
-#         if 'math_definition' not in sec_name:
-#             paper_dict[sec_name] = {
-#                 "contents": sec_content,
-#                 "figures": create_figure_dict(sec_dic, sec_name)
-#             }
-#     return paper_dict
-
-
-# def count_figures(fd_list):
-#     """ Test case that compares number of figure files with the number of figures found via TexSoup.
-#     """
-#     count = 0
-#     for s in fd_list.items():
-#         l = len(s[-1].keys())
-#         if (l) > 0:
-#             count += l
-#     assert count == 8, f'{count} is not correct. Check files.'
-#     print("test passed!")
-
+@lru_cache(maxsize=32)
 def generate_section_prompt(section_name):
-    # TODO: add Logging to this function
-    base_prompt = f"You are a helpful assistant. Create a detailed prompt to concisely summarize the '{section_name}' section of a scientific article. In the prompt, stress that the summary must be detailed enough to cover all key points but concise enough to provide a clear understanding in markdown bullet point format."
+    base_prompt = f"Create a detailed prompt to concisely summarize the '{section_name}' section of a scientific article. Stress that the summary must cover all key points but be concise, using markdown bullet points."
     response = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": base_prompt},
-                    {"role": "user", "content": f"Generate a prompt for the '{section_name}' section."}
-                ]
-            )
-    generated_prompt = response.choices[0].message.content.strip()
-    return generated_prompt
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": base_prompt},
+            {"role": "user", "content": f"Generate a prompt for the '{section_name}' section."}
+        ]
+    )
+    return response.choices[0].message.content.strip()
+
+def section_summary_generator(section_dict):
+    summaries = {}
+    # Loop through each section and generate a summary
+    for section_name, section_contents in section_dict.items():
+        if 'math_definition' not in section_name and 'acknowledgements' not in section_name:
+            print(section_name)
+            text = str(section_contents)
+            prompt = generate_section_prompt(section_name)
+            print(f"PROMPT -> {prompt}")
+            
+            try:
+                response = client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[
+                        {"role": "system", "content": prompt},
+                        {"role": "user", "content": text}
+                    ]
+                )
+                # Checks to see if the response has any choices
+                if response.choices:
+                    summary = response.choices[0].message.content
+                    print(f"SUMMARY -> {summary}")
+                    summaries[section_name] = summary
+                else:
+                    print(f"**WARNING: No choices returned for section {section_name}")
+            except Exception as e:
+                print(f"**ERROR: {e}")
+
+    return summaries 
 
 
-def generate_formatted_summary(summary):
+def article_summary_generator(summary):
     prompt = (
-        "You are a helpful assistant that summarizes the key points of a scientific article for a technical audience."
-        "Generate a summary with the following headings: Objective, Method, Results, Significance.\n\n"
-        "**Objective:** \n"
-        "**Method:** \n"
-        "**Results:** \n"
-        "**Significance:** "
+        "Summarize the key points of a scientific article for a technical audience using the following format. "
+        "Ensure you include exactly these headings and nothing else:\n\n"
+        "## Objective:\nProvide a concise statement of the study's goal or main question.\n\n"
+        "## Method:\nDescribe the main methods or procedures used in the study. Be explicit on the tools used.\n\n"
+        "## Results:\nSummarize the key findings of the study.\n\n"
+        "## Significance:\nExplain the importance and implications of the findings.\n\n"
+        "Here is the summary to format:\n\n"
     )
     response = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
-            {"role": "system", "content": prompt},
-            {"role": "user", "content": summary}
-        ]
+            {"role": "system", "content": "You are a helpful assistant that formats scientific article summaries."},
+            {"role": "user", "content": prompt + summary}
+        ],
+        temperature=0.5,
+        max_tokens=300
     )
-    formatted_summary = response.choices[0].message.content.strip()
-    # Extract the individual sections from the summary text
-    sections = formatted_summary.split("**")
-    summary_dict = {}
-    for idx, section in enumerate(sections):
-        if "Objective:" in section:
-            summary_dict["objective"] = sections[idx+1].strip()
-        elif "Method:" in section:
-            summary_dict["method"] = sections[idx+1].strip()
-        elif "Results:" in section:
-             summary_dict["results"] = sections[idx+1].strip()
-        elif "Significance:" in section:
-            summary_dict["significance"] = sections[idx+1].strip()
+    summary = response.choices[0].message.content.strip()
+    return summary
 
-    return summary_dict
+def save_raw_summary(content, file):
+    with open(file, 'w', encoding='utf-8') as f:
+        f.write(content)
 
+def format_to_markdown(text):
+    """Convert text to markdown format"""
+    # Split text into sections
+    text = text.strip()
+    sections = text.split('##')
+    sections = sections[1:]  # remove first empty element
+    
+    markdown_output = ""
+    for section in sections:
+        # Split the section into title and content based on Objective, Method, Results, Significance
+        if 'Objective' in section:
+            title = 'Objective'
+            content = section.split('Objective:', 1)
+        elif 'Method' in section:
+            title = 'Method'
+            content = section.split('Method:', 1)
+        elif 'Results' in section:
+            title = 'Results'
+            content = section.split('Results:', 1)
+        elif 'Significance' in section:
+            title = 'Significance'
+            content = section.split('Significance:', 1)
+        else:
+            print(f"**WARNING: Section not recognized: {section}")
+            continue
+        # Add title as h3 header
+        markdown_output += f"### {title}\n\n"
+        # Add the content and strip whitespace
+        markdown_output += f"{content[1].strip()}\n\n"
+    return markdown_output.strip()
 
 def template_newsletter(summary, paper):
+    return f"## {paper['title']}\n\n{summary}\n\narxiv: {paper['arxiv_url']}\n\n---\n\n"
 
-    newsletter = f"**{paper['title']}**\n\n"
-    newsletter += summary + "\n\n"
-    newsletter += f"arxiv: {paper['arxiv_url']}\n\n"
-    newsletter += "---\n\n"
-    return newsletter
-
+# save to markdown
+def save_newsletter(content, file):
+    # content is a list with each element being a string
+    with open(file, 'w+', encoding='utf-8') as f:
+        for line in content:
+            f.write(line)
 
 def save_to_json(content, file_path):
-# Function to save content to a JSON file
     with open(file_path, 'w', encoding='utf-8') as f:
         json.dump(content, f, ensure_ascii=False, indent=4)
