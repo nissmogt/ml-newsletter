@@ -25,25 +25,33 @@ def generate_newsletter():
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Weekly Machine Learning Research Highlights</title>
-    <link href={font} rel="stylesheet">
-    <link rel="stylesheet" href="styles.css">
+    <title>Newsletter Mehrabiani</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="{font}" rel="stylesheet">
 </head>
 <body>
-    <div>
+    <header>
         <h1>newsletter mehrabiani</h1>
         <nav>
+            <input type="checkbox" id="sidebar-active">
+            <label for="sidebar-active" class="open-sidebar-button">
+                <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="#000000"><path d="M120-240v-80h720v80H120Zm0-200v-80h720v80H120Zm0-200v-80h720v80H120Z"/></svg>
+            </label>
+            <label id="overlay" for="sidebar-active"></label>
             <div class="links-container">
-                <a href="/" class="home-link">home</a>
-                <a href="/about.html" class="home-link">about</a>
-                <a href="/blog.html" class="home-link">blog</a>
-                <a href="/newsletter.html" class="home-link">newsletter</a>
+                <label for="sidebar-active" class="close-sidebar-button">
+                    <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="#000000"><path d="m256-200-56-56 224-224-224-224 56-56 224 224 224-224 56 56-224 224 224 224-56 56-224-224-224 224Z"/></svg>
+                </label>    
+                <a class="home-link" href="/">home</a>
+                <a class="home-link" href="/about.html">about</a>
+                <a class="home-link" href="/blog.html">blog</a>
+                <a class="home-link" href="/newsletter.html">newsletter</a>
             </div>
         </nav>
-    </div>
-            
+    </header>
             {html_content}
-            
     <footer>
         <a href="https://github.com/nissmogt" class="footer-link">github</a> |
         <a href="https://linkedin.com/in/kareemmehrabiani" class="footer-link">linkedin</a> |
@@ -75,9 +83,11 @@ def markdown_to_html(markdown_content, date=None):
     html_content = f"""
     <div class="container">
         <h1>Weekly Machine Learning Research Highlights 🤖</h1>
-        <h2>Updates on Friday.</h2>
-        <p>updated: {date}</p>
-        <p>Click titles below to view article summaries. Generated using a custom pipeline with OpenAI's <strong>gpt-4o-mini</strong>.</p>
+        <h2>
+            Updates on Friday.
+            <p>updated: {date}</p> </br> 
+            Click titles below to view article summaries. Generated using a custom pipeline with OpenAI's <strong>gpt-4o-mini</strong>.
+        </h2>
     """
 
     for section in sections:
