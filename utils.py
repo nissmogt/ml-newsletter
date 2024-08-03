@@ -2,7 +2,8 @@ import os
 import json
 import arxiv
 import tarfile
-import datetime
+import re
+import logging
 from pathlib import Path
 from functools import lru_cache
 from pylatexenc.latex2text import LatexNodes2Text
@@ -64,10 +65,40 @@ def find_main_tex_file(extract_path, test=False):
     return None
 
 @lru_cache(maxsize=32)
+# def parse_tex_file(file_path):
+#     with open(file_path, 'r') as file:
+#         tex_content = file.read()
+#     return texsoup.TexSoup(tex_content)
 def parse_tex_file(file_path):
-    with open(file_path, 'r') as file:
-        tex_content = file.read()
-    return texsoup.TexSoup(tex_content)
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            tex_content = f.read()
+        
+        # preprocess the tex content
+        # tex_content = preprocess_tex(tex_content)
+
+        return texsoup.TexSoup(tex_content)
+    except Exception as e:
+        logging.error(f"Error parsing tex file: {file_path}: {str(e)}")
+        return None
+
+
+def preprocess_tex(tex_content):
+    # Remove comments
+    content = re.sub(r'%.*$', '', tex_content, flags=re.MULTILINE)
+    # Simplify complex math environments
+    content = re.sub(r'\\begin{equation}.*?\\end{equation}', '\\begin{equation}...\\end{equation}', content, flags=re.DOTALL)
+    content = re.sub(r'\\begin{align}.*?\\end{align}', '\\begin{align}...\\end{align}', content, flags=re.DOTALL)
+    
+    # Remove bibliography-related commands
+    content = re.sub(r'\\bibliography{.*?}', '', content)
+    content = re.sub(r'\\bibliographystyle{.*?}', '', content)
+    
+    # Simplify figure environments
+    content = re.sub(r'\\begin{figure}.*?\\end{figure}', '\\begin{figure}...\\end{figure}', content, flags=re.DOTALL)
+    return content
+
+
 
 def find_tex_command(tex_soup, field):
     tex_list = tex_soup.find_all(field)
