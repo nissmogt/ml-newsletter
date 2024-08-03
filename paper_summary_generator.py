@@ -22,7 +22,7 @@ def generate_newsletter_content(paper_info_list, paper_source_folder_list, paper
     print(f"*** Paper Info List: {paper_info_list}")
     print(f"*** Mode: {['Test' if test else 'Production']}")
 
-    newsletter_content = ["# Weekly Machine Learning Research Highlights\n\n"]
+    newsletter_content = []
     
     for idx, paper in enumerate(paper_info_list):
         tar_file = papers_path / paper_source_folder_list[idx]
@@ -41,6 +41,10 @@ def generate_newsletter_content(paper_info_list, paper_source_folder_list, paper
         
         print(f"Main text file: {main_text}")
         tex_soup = parse_tex_file(main_text)
+        if tex_soup is None:
+            print(f"**WARNING: Unable to parse tex file for {paper['title']}\nmoving on to next paper...")
+            continue
+
         print(f"Title: {paper['title']}")
         
         input_list = find_tex_command(tex_soup, 'input')
