@@ -75,7 +75,7 @@ def generate_newsletter_content(paper_info_list, paper_source_folder_list, paper
     print(f"*** Final Newsletter Papers: {len(newsletter_content)}")
     return newsletter_content
 
-def main(test=False):
+def run_generator(test=False):
     # Initialize directories
     papers_dir = TEST_DIR if test else PAPERS_DIR
     initialize_directories(papers_dir, NEWSLETTER_DIR)
@@ -106,4 +106,4 @@ def main(test=False):
     save_newsletter(newsletter_content, file_path)
 
 if __name__ == "__main__":
-    main(test=False)  # Set to True for testing
+    run_generator(test=False)  # Set to True for testing
