@@ -29,6 +29,8 @@ def generate_newsletter():
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="{font}" rel="stylesheet">
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
 </head>
 <body>
     <header>
@@ -131,6 +133,11 @@ def convert_markdown_section(markdown):
     
     # Convert links
     markdown = re.sub(r'\[(.*?)\]\(((?!http://arxiv\.org).*?)\)', r'<a href="\2">\1</a>', markdown)
+
+    # Handle inline TeX
+    markdown = re.sub(r'\$(.+?)\$', r'\\(\1\\)', markdown)
+    # Handle display TeX
+    markdown = re.sub(r'\$\$(.*?)\$\$', r'\\[\1\\]', markdown, flags=re.DOTALL)
     
     # Convert paragraphs
     markdown = markdown.replace('\n\n', '</p><p>')
