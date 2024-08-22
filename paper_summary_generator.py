@@ -32,7 +32,7 @@ def generate_newsletter_content(paper_info_list, paper_source_folder_list, paper
         if not extract_path.exists():
             extract_tarfile(tar_file, extract_path)
         else:
-            print(f"**INFO: {paper['title']} already extracted.")
+            print(f"**INFO: already extracted {paper['title']}.")
 
         main_text = find_main_tex_file(extract_path, test=test)
         if main_text is None:

@@ -61,6 +61,7 @@ def find_main_tex_file(extract_path, test=False):
                 with open(Path(root) / file, 'r') as f:
                     tex_content = f.read()
                 if '\\begin{document}' in tex_content:
+                    print(f"MESSAGE -> Found a likely main .tex file: {file}")
                     return Path(root) / file
     return None
 
@@ -177,7 +178,7 @@ def article_summary_generator(summary):
             {"role": "system", "content": "You are a helpful assistant that formats scientific article summaries."},
             {"role": "user", "content": prompt + summary}
         ],
-        temperature=0.5,
+        temperature=0.37,
         max_tokens=300
     )
     summary = response.choices[0].message.content.strip()
