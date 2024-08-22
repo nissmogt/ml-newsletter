@@ -47,7 +47,6 @@ def generate_newsletter():
                 </label>    
                 <a class="home-link" href="/">home</a>
                 <a class="home-link" href="/about.html">about</a>
-                <a class="home-link" href="/blog.html">blog</a>
                 <a class="home-link" href="/newsletter.html">newsletter</a>
             </div>
         </nav>
