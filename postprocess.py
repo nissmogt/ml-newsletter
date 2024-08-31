@@ -34,7 +34,7 @@ def generate_newsletter():
 </head>
 <body>
     <header>
-        <h1>newsletter mehrabiani</h1>
+        <h1>newsletter.mehrabiani</h1>
         <nav>
             <input type="checkbox" id="sidebar-active">
             <label for="sidebar-active" class="open-sidebar-button">
@@ -47,6 +47,7 @@ def generate_newsletter():
                 </label>    
                 <a class="home-link" href="/">home</a>
                 <a class="home-link" href="/about.html">about</a>
+                <a class="home-link" href="/projects.html">projects</a>
                 <a class="home-link" href="/newsletter.html">newsletter</a>
             </div>
         </nav>
